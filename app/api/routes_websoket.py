@@ -3,6 +3,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+# STT / 음성 AI 연동 서비스 가상 라우터 임포트 구조 유지
 from app.services.speech import speech_audio_router
 
 router = APIRouter(tags=["acs-audio"])
@@ -12,9 +13,11 @@ router = APIRouter(tags=["acs-audio"])
 async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
 
+    # ACS 스트리밍 연결 시 추적성 개선을 위한 헤더 추출
     call_connection_id = websocket.headers.get("x-ms-call-connection-id")
     correlation_id = websocket.headers.get("x-ms-call-correlation-id")
 
+    # 오디오 세션 컨텍스트 오픈
     await speech_audio_router.open_session(
         session_id=session_id,
         call_connection_id=call_connection_id,
@@ -36,9 +39,11 @@ async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
             elif kind == "AudioData":
                 audio_data = packet.get("audioData") or {}
 
+                # 묵음 구간 패킷 필터링링
                 if audio_data.get("silent"):
                     continue
 
+                # 오디오 스트리밍 데이터를 바이너리 PCM 스트림으로 디코딩
                 pcm = base64.b64decode(audio_data["data"])
 
                 await speech_audio_router.push_pcm(
@@ -58,4 +63,5 @@ async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
         pass
 
     finally:
+        # 연결 종료 시 리소스 정리 및 닫기 보장
         await speech_audio_router.close_session(session_id=session_id)
