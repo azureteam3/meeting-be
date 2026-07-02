@@ -18,15 +18,15 @@ from azure.communication.identity import (
     CommunicationTokenScope,
 )
 
-# from app.models.conference_session import ConferenceSession, ParticipantKind
+from app.models.conference_session import ConferenceSession, ParticipantKind
 from app.services.session_store import SessionStore
 
 # 🚨 마감용 응급조치: 에러 나는 임포트를 지우고 가짜 클래스로 대체
-class ConferenceSession:
-    pass
+# class ConferenceSession:
+#     pass
 
-class ParticipantKind:
-    pass
+# class ParticipantKind:
+#     pass
 
 class ACSCommunicationService:
     """Azure Communication Services 핵심 연동 및 래핑 서비스 클래스"""
