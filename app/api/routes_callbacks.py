@@ -2,8 +2,8 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
-# 수정된 서비스 경로 반영
-from app.services.communication_service import ACSCommunicationService
+# services 패키지 경로에서 서비스 객체를 참조
+from app.api.routes_communication import communication_service
 
 router = APIRouter(prefix="/callbacks", tags=["acs-callbacks"])
 
@@ -28,7 +28,9 @@ async def acs_callback(
     request: Request,
     session_id: str = Query(...),
 ) -> dict[str, str]:
-    service: ACSCommunicationService = request.app.state.acs
+    """Azure Communication Services 전화를 제어하는 비동기 이벤트 훅 처리 콜백 API"""
+    # 전역 모듈 수준 인스턴스 참조로 수정
+    service = communication_service
     events = await request.json()
 
     if isinstance(events, dict):

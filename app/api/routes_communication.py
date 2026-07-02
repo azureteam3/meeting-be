@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.session import (
@@ -6,12 +7,12 @@ from app.schemas.session import (
     SessionResponse,
     TokenResponse,
 )
-# 수정한 신규 경로로 변경
 from app.services.communication_service import ACSCommunicationService
 from app.config import settings
 
 router = APIRouter(prefix="/communication", tags=["Communication"])
 
+# 설정 정보를 기반으로 서비스 싱글톤 인스턴스 초기화 구성
 communication_service = ACSCommunicationService(
     connection_string=settings.ACS_CONNECTION_STRING,
     callback_url=settings.ACS_CALLBACK_URL,
@@ -31,6 +32,7 @@ def create_session():
         meeting_id=None,
         session_id=session.id,
         status=session.state,
+        created_at=datetime.utcnow()
     )
 
 
@@ -101,7 +103,6 @@ def add_participant(
     request: ParticipantRequest,
 ):
     try:
-        # 서비스 메서드의 Keyword-only 인자 구성에 맞춰 명시적 인자 지정 및 매핑 오류 수정
         communication_service.add_participant(
             session_id=session_id,
             participant_raw_id=request.user_id,
@@ -130,7 +131,6 @@ def remove_participant(
     user_id: str,
 ):
     try:
-        # 서비스 메서드의 Keyword-only 인자 구성에 맞춰 명시적 인자 지정 및 매핑 오류 수정
         communication_service.remove_participant(
             session_id=session_id,
             participant_raw_id=user_id,

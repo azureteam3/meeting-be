@@ -6,6 +6,7 @@ ParticipantKind = Literal["acs_user", "phone"]
 
 @dataclass(slots=True)
 class ConferenceSession:
+    """통화 세션 상태를 저장하는 인메모리 도메인 엔티티"""
     id: str
     call_connection_id: str | None = None
     server_call_id: str | None = None

@@ -3,7 +3,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-# STT / 음성 AI 연동 서비스 가상 라우터 임포트 구조 유지
+# 실시간 STT 엔진 및 음성 서비스 가상 처리 라우터 연동
 from app.services.speech import speech_audio_router
 
 router = APIRouter(tags=["acs-audio"])
@@ -11,13 +11,13 @@ router = APIRouter(tags=["acs-audio"])
 
 @router.websocket("/ws/audio/{session_id}")
 async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
+    """통화 상태에서 넘어오는 실시간 PCM 스트림 오디오 이중 송수신 웹소켓 게이트웨이"""
     await websocket.accept()
 
-    # ACS 스트리밍 연결 시 추적성 개선을 위한 헤더 추출
     call_connection_id = websocket.headers.get("x-ms-call-connection-id")
     correlation_id = websocket.headers.get("x-ms-call-correlation-id")
 
-    # 오디오 세션 컨텍스트 오픈
+    # 세션 열기 트리거
     await speech_audio_router.open_session(
         session_id=session_id,
         call_connection_id=call_connection_id,
@@ -39,13 +39,13 @@ async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
             elif kind == "AudioData":
                 audio_data = packet.get("audioData") or {}
 
-                # 묵음 구간 패킷 필터링링
+                # 묵음 필터링 처리로 대역폭 절약
                 if audio_data.get("silent"):
                     continue
 
-                # 오디오 스트리밍 데이터를 바이너리 PCM 스트림으로 디코딩
                 pcm = base64.b64decode(audio_data["data"])
 
+                # AI 오디오 파이프라인(STT/Speech 엔진)으로 직진 처리
                 await speech_audio_router.push_pcm(
                     session_id=session_id,
                     pcm=pcm,
@@ -63,5 +63,5 @@ async def acs_audio_websocket(websocket: WebSocket, session_id: str) -> None:
         pass
 
     finally:
-        # 연결 종료 시 리소스 정리 및 닫기 보장
+        # 종료 시 오디오 스트리밍 세션 정리 보장
         await speech_audio_router.close_session(session_id=session_id)
