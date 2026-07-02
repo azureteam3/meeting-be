@@ -1,12 +1,7 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.session import (
-    ParticipantRequest,
-    ParticipantResponse,
-    SessionResponse,
-    TokenResponse,
-)
+from app.schemas.session import ParticipantRequest, ParticipantResponse, SessionResponse, TokenResponse
 from app.services.communication_service import ACSCommunicationService
 from app.config import settings
 
