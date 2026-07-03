@@ -58,3 +58,5 @@ class SessionManager:
         if not runtime:
             return set()
         return runtime["websockets"]
+
+session_manager = SessionManager()

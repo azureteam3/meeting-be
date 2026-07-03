@@ -1,13 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.schemas.session import SessionStartRequest
-from app.services.session_manager import SessionManager
+from app.services.session_manager import session_manager
 from app.services.speech_transcriber import SpeechTranscriberService
 from app.services.acs_audio_bridge import ACSAudioBridge
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
-
-session_manager = SessionManager()
 
 
 class AudioChunkRequest(BaseModel):
@@ -32,22 +30,6 @@ def start_session(req: SessionStartRequest):
         meeting_id=req.meeting_id,
         session_id=req.session_id,
     )
-
-    runtime = session_manager.get_runtime(req.session_id)
-    if runtime["transcriber"] is None:
-        transcriber = SpeechTranscriberService(
-            meeting_id=req.meeting_id,
-            session_id=req.session_id,
-            on_emit=lambda payload: None
-        )
-        runtime["bridge"] = ACSAudioBridge(transcriber)
-        runtime["transcriber"] = transcriber
-
-        async def async_emit(payload: dict):
-            await broadcast_to_session(req.session_id, payload)
-
-        transcriber.on_emit = async_emit
-        transcriber.start()
 
     return result
 

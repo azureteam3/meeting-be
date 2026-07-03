@@ -43,6 +43,8 @@ class TranscriptProcessor:
         needs_review = not is_reliable
 
         translated_text = None
+        translation_error = None
+        is_translated = False
         status = "recognized"
 
         if event_type == "interim":
@@ -51,6 +53,7 @@ class TranscriptProcessor:
         elif event_type == "final":
             if normalized_lang == settings.TARGET_LANGUAGE:
                 translated_text = cleaned
+                is_translated = False
                 status = "bypass_ko"
             elif normalized_lang in settings.translator_source_languages:
                 try:
@@ -58,11 +61,16 @@ class TranscriptProcessor:
                         text=cleaned,
                         source_language=normalized_lang
                     )
+                    is_translated = True
                     status = "translated"
-                except Exception:
-                    translated_text = None
-                    status = "failed"
+                except Exception as e:
+                    translated_text = cleaned
+                    translation_error = str(e)
+                    is_translated = False
+                    status = "translated_fallback"
             else:
+                translated_text = cleaned
+                is_translated = False
                 status = "recognized"
 
         event = TranscriptEvent(
@@ -83,9 +91,32 @@ class TranscriptProcessor:
             status=status,
             offset_ms=offset_ms,
             duration_ms=duration_ms,
+            translation_error=translation_error,
+            is_final_for_summary=(event_type == "final"),
         )
 
-        self.repository.save_event(event)
+        event._meta = {
+            "raw_original": text,
+            "cleaned": cleaned,
+            "normalized_language": normalized_lang,
+            "is_translated": is_translated,
+            "translation_error": translation_error,
+            "meeting_id": meeting_id,
+            "session_id": session_id,
+            "event_type": event_type,
+        }     
+
+        try:
+            self.repository.save_event(event)
+        except Exception as e:
+            print("[Transcript DB Save Failed]", e)
+            
+            # ✔ 1회 retry
+            try:
+                self.repository.save_event(event)
+            except Exception as e2:
+                print("[Transcript DB FINAL FAIL]", e2)
+                # pipeline 절대 중단 안 함
 
         if event_type == "final":
             self.foundry_router.route(event)
