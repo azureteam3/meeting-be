@@ -9,6 +9,7 @@ from app.api.routes_stream import router as stream_router
 from app.api.routes_communication import router as communication_router
 from app.api.routes_callbacks import router as callbacks_router
 from app.api.routes_websoket import router as websocket_router
+from app.api.routes_agent import router as agent_router
 from app.api.routes_communication import communication_service
 
 from app.db.postgres import Base, engine
@@ -48,6 +49,7 @@ app.include_router(stream_router)
 app.include_router(communication_router)
 app.include_router(callbacks_router)
 app.include_router(websocket_router)
+app.include_router(agent_router)
 
 
 @app.get("/")
