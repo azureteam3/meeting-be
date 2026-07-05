@@ -35,6 +35,15 @@ class Settings(BaseSettings):
 
     FILLER_WORDS: str = "uh,um,er,ah,음,어,그,저"
 
+    # ── 에이전트(회의 요약·회의록)용 Azure OpenAI 설정 (기본값 "") ──
+    AZURE_AI_PROJECT_ENDPOINT: str = ""
+    AZURE_AI_API_KEY: str = ""
+    AZURE_AI_DEPLOYMENT: str = ""
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_API_KEY: str = ""
+    AZURE_OPENAI_DEPLOYMENT: str = ""
+    AZURE_OPENAI_API_VERSION: str = "2024-12-01-preview"
+
     @property
     def speech_auto_detect_languages(self) -> List[str]:
         return [x.strip() for x in self.SPEECH_AUTO_DETECT_LANGUAGES.split(",") if x.strip()]
