@@ -18,50 +18,50 @@ class TranslatorService:
         retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
         self.session.mount("https://", HTTPAdapter(max_retries=retries))
 
-        def translate_to_korean(self, text: str, source_language: str | None) -> str:
+    def translate_to_korean(self, text: str, source_language: str | None) -> str:
 
-            if not text:
-                return text
+        if not text:
+            return text
 
-            if source_language == "ko":
-                return text
-            print(f"[Translator] {source_language} -> ko : {text}")
+        if source_language == "ko":
+            return text
+        print(f"[Translator] {source_language} -> ko : {text}")
 
-            params = {
-                "api-version": "3.0",
-                "to": "ko",
-            }
+        params = {
+            "api-version": "3.0",
+            "to": "ko",
+        }
 
-            if source_language:
-                params["from"] = source_language
+        if source_language:
+            params["from"] = source_language
 
-            body = [{"text": text}]
+        body = [{"text": text}]
+        
+        try:
+            response = self.session.post(
+                self.endpoint,
+                params=params,
+                headers=self.headers,
+                json=body,
+                timeout=settings.TRANSLATOR_TIMEOUT_SEC,
+            )
+            response.raise_for_status()
+            data = response.json()
             
-            try:
-                response = self.session.post(
-                    self.endpoint,
-                    params=params,
-                    headers=self.headers,
-                    json=body,
-                    timeout=settings.TRANSLATOR_TIMEOUT_SEC,
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                if not data:
-                    return text
-
-                translations = data[0].get("translations")
-
-                if not translations:
-                    return text
-
-                translated = translations[0].get("text", text)
-
-                print(f"[Translator Success] {translated}")
-
-                return translated
-            except Exception as e:
-                print("[Translator Error]", e)
-
+            if not data:
                 return text
+
+            translations = data[0].get("translations")
+
+            if not translations:
+                return text
+
+            translated = translations[0].get("text", text)
+
+            print(f"[Translator Success] {translated}")
+
+            return translated
+        except Exception as e:
+            print("[Translator Error]", e)
+
+            return text

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query
 from app.schemas.transcript import TranscriptIngestRequest
 from app.services.transcript_processor import TranscriptProcessor
 from app.repositories.transcript_repository import TranscriptRepository
+from app.services.transcript_service import transcript_service
 
 router = APIRouter(prefix="/transcripts", tags=["transcripts"])
 
@@ -10,7 +11,7 @@ repository = TranscriptRepository()
 
 
 @router.post("/ingest")
-def ingest_transcript(req: TranscriptIngestRequest):
+async def ingest_transcript(req: TranscriptIngestRequest):
     event = processor.process(
         meeting_id=req.meeting_id,
         session_id=req.session_id,
@@ -23,12 +24,12 @@ def ingest_transcript(req: TranscriptIngestRequest):
         offset_ms=req.offset_ms,
         duration_ms=req.duration_ms,
     )
-
     if not event:
         return {"message": "ignored"}
 
-    return event.model_dump()
+    await transcript_service.handle_event(event)
 
+    return event.model_dump()
 
 @router.get("")
 def list_transcripts(session_id: str | None = Query(default=None)):

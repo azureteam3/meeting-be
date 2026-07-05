@@ -60,71 +60,23 @@ class SpeechAudioRouter:
         event_loop = asyncio.get_running_loop()
 
         async def handle_emit(
-            payload: dict[str, Any],
+            event,
         ) -> None:
-            """
-            Azure Speech 인식 결과를 해당 세션의
-            모든 WebSocket 클라이언트에 전달합니다.
-            """
+            from app.services.transcript_service import transcript_service
 
-            payload_type = payload.get("type")
-
-            # system 이벤트는 우선 서버 로그로만 확인
-            if payload_type == "system":
-                print(
-                    "[SpeechRouter] Azure 상태:",
-                    payload,
-                )
+            # system 이벤트는 로그만 출력
+            if isinstance(event, dict):
+                print("[SpeechRouter] Azure 상태:", event)
                 return
-
-            text = payload.get("text")
-
-            if not text:
-                print(
-                    "[SpeechRouter] 텍스트 없는 결과:",
-                    payload,
-                )
-                return
-
-            message = {
-                "type": "transcript",
-                "payload": payload,
-            }
 
             print(
-                "[SpeechRouter] 자막 전송:",
-                f"session={session_id},",
-                f"text={text},",
-                f"is_final={payload.get('is_final')}",
+                "[SpeechRouter] 자막:",
+                event.cleaned_text,
+                "| final:",
+                event.event_type == "final",
             )
 
-            dead_sockets = []
-
-            websockets = list(
-                session_manager.get_websockets(
-                    session_id
-                )
-            )
-
-            for websocket in websockets:
-                try:
-                    await websocket.send_json(
-                        message
-                    )
-                except Exception as error:
-                    print(
-                        "[SpeechRouter] 자막 전송 실패:",
-                        error,
-                    )
-                    dead_sockets.append(
-                        websocket
-                    )
-
-            for websocket in dead_sockets:
-                session_manager.remove_websocket(
-                    session_id,
-                    websocket,
-                )
+            await transcript_service.handle_event(event)
 
         transcriber = SpeechTranscriberService(
             meeting_id=meeting_id,

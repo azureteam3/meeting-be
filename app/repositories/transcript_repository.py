@@ -4,6 +4,7 @@ from app.schemas.transcript import TranscriptEvent
 
 
 class TranscriptRepository:
+
     def save_event(self, event: TranscriptEvent):
         db = SessionLocal()
         try:
@@ -26,21 +27,63 @@ class TranscriptRepository:
                 offset_ms=event.offset_ms,
                 duration_ms=event.duration_ms,
             )
+
             db.add(row)
             db.commit()
             db.refresh(row)
+
             return row
+
         finally:
             db.close()
 
-    def list_events(self, session_id: str | None = None):
+    def update_translation(
+        self,
+        segment_id: str,
+        translated_text: str,
+    ):
         db = SessionLocal()
+
+        try:
+            row = (
+                db.query(TranscriptRecord)
+                .filter(
+                    TranscriptRecord.segment_id == segment_id
+                )
+                .first()
+            )
+
+            if not row:
+                return None
+
+            row.translated_text = translated_text
+            row.status = "translated"
+
+            db.commit()
+            db.refresh(row)
+
+            return row
+
+        finally:
+            db.close()
+
+    def list_events(
+        self,
+        session_id: str | None = None,
+    ):
+        db = SessionLocal()
+
         try:
             query = db.query(TranscriptRecord)
-            if session_id:
-                query = query.filter(TranscriptRecord.session_id == session_id)
 
-            rows = query.order_by(TranscriptRecord.created_at.desc()).all()
+            if session_id:
+                query = query.filter(
+                    TranscriptRecord.session_id == session_id
+                )
+
+            rows = query.order_by(
+                TranscriptRecord.created_at.desc()
+            ).all()
 
             return [
                 {
@@ -62,8 +105,10 @@ class TranscriptRepository:
                     "offset_ms": row.offset_ms,
                     "duration_ms": row.duration_ms,
                     "created_at": row.created_at,
+                    "updated_at": row.updated_at,
                 }
                 for row in rows
             ]
+
         finally:
             db.close()

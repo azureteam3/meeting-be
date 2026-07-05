@@ -130,7 +130,7 @@ class SpeechTranscriberService:
 
     def _emit(
         self,
-        payload: dict[str, Any],
+        event,
     ) -> None:
         """
         Azure SDK 콜백은 별도 스레드에서 실행될 수 있으므로
@@ -141,7 +141,7 @@ class SpeechTranscriberService:
             return
 
         try:
-            result = self.on_emit(payload)
+            result = self.on_emit(event)
 
             if asyncio.iscoroutine(result):
                 if (
@@ -169,13 +169,22 @@ class SpeechTranscriberService:
         event_name: str,
         detail: str | None = None,
     ) -> None:
-        self._emit({
-            "type": "system",
-            "session_id": self.session_id,
-            "meeting_id": self.meeting_id,
-            "event": event_name,
-            "detail": detail,
+        if not self.on_emit:
+            return
+
+        result = self.on_emit({
+            "type":"system",
+            "session_id":self.session_id,
+            "meeting_id":self.meeting_id,
+            "event":event_name,
+            "detail":detail,
         })
+
+        if asyncio.iscoroutine(result):
+            asyncio.run_coroutine_threadsafe(
+                result,
+                self.event_loop,
+            )
 
     def _handle_transcribing(
         self,
@@ -249,22 +258,7 @@ class SpeechTranscriberService:
             )
             return
 
-        self._emit({
-            "type": "transcript",
-            "session_id": self.session_id,
-            "meeting_id": self.meeting_id,
-            "speaker": event.speaker,
-            "speaker_id": event.speaker_id,
-            "text": event.cleaned_text,
-            "translated_text": event.translated_text,
-            "language": event.original_language,
-            "confidence": event.confidence,
-            "is_final": False,
-            "status": event.status,
-            "offset_ms": event.offset_ms,
-            "duration_ms": event.duration_ms,
-            "created_at": event.created_at.isoformat(),
-        })
+        self._emit(event)
 
     def _handle_transcribed(
         self,
@@ -343,22 +337,7 @@ class SpeechTranscriberService:
             )
             return
 
-        self._emit({
-            "type": "transcript",
-            "session_id": self.session_id,
-            "meeting_id": self.meeting_id,
-            "speaker": event.speaker,
-            "speaker_id": event.speaker_id,
-            "text": event.cleaned_text,
-            "translated_text": event.translated_text,
-            "language": event.original_language,
-            "confidence": event.confidence,
-            "is_final": True,
-            "status": event.status,
-            "offset_ms": event.offset_ms,
-            "duration_ms": event.duration_ms,
-            "created_at": event.created_at.isoformat(),
-        })
+        self._emit(event)
 
     def _handle_canceled(
         self,

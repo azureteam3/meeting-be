@@ -62,24 +62,6 @@ async def websocket_stream(
             websocket,
         )
 
-        await websocket.send_json({
-            "type": "error",
-            "payload": {
-                "message": "음성 인식 세션을 시작하지 못했습니다.",
-                "detail": str(error),
-            },
-        })
-
-        await websocket.close(code=1011)
-        return
-
-    await websocket.send_json({
-        "type": "connected",
-        "payload": {
-            "session_id": session_id,
-        },
-    })
-
     audio_chunk_count = 0
 
     try:
@@ -308,3 +290,23 @@ async def handle_client_message(
         "[WebSocket] 알 수 없는 메시지:",
         message,
     )
+
+    async def push_transcript(websocket, event):
+        await websocket.send_json({
+            "type": "transcript",
+            "payload": {
+                "id": event.segment_id,
+                "original": event.cleaned_text,
+                "translated": event.translated_text,
+                "is_final": event.event_type == "final"
+            }
+        })
+    
+    async def push_translation_update(websocket, segment_id, ko):
+        await websocket.send_json({
+            "type": "translation_update",
+            "payload": {
+                "id": segment_id,
+                "translated": ko
+            }
+        })

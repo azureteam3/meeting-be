@@ -42,7 +42,8 @@ class TranscriptEvent(BaseModel):
         "recognized",
         "translated",
         "bypass_ko",
-        "failed"
+        "failed",
+        "final",
     ] = "recognized"
 
     offset_ms: Optional[int] = None
