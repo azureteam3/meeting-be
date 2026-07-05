@@ -51,14 +51,19 @@ class TranscriptRecord(Base):
 # ── 에이전트(회의 요약·회의록)용 표 3개 (자막팀 transcript_records는 위에서 읽기만 함) ──
 
 class MeetingSummarySnapshot(Base):
-    """회의별 '최신 요약' 1개 (요약 요청마다 UPSERT)."""
+    """요약 스냅샷 - append-only 이력(덮어쓰지 않고 갱신마다 새 행).
+
+    동시 갱신 충돌(lost update)이 구조적으로 없고 요약 변화 이력이 남는다.
+    현재 요약 = 그 회의에서 coverage_to_seq(같으면 id)가 가장 큰 행.
+    """
     __tablename__ = "meeting_summary_snapshot"
 
-    meeting_id = Column(String(100), primary_key=True)
-    version = Column(Integer, default=1)
-    coverage_to_seq = Column(BigInteger, default=0)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)  # 스냅샷 번호(쌓인 순서)
+    meeting_id = Column(String(100), index=True, nullable=False)
+    version = Column(Integer, default=1)                           # 몇 번째 요약인지(참고용)
+    coverage_to_seq = Column(BigInteger, default=0)                # 어디까지 반영했는지(자막 id 워터마크)
     summary_json = Column(JSONB, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class MeetingChatMessage(Base):

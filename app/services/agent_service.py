@@ -147,23 +147,55 @@ _SUMMARY_SYSTEM = (
 )
 
 
-def generate_and_save_summary(db, meeting_id, response_language="ko"):
+# 증분 갱신용 지시문. '기존 요약 + 그 이후 새 자막'을 주고 갱신된 요약을 같은 구조로 뽑는다.
+_SUMMARY_UPDATE_SYSTEM = (
+    "너는 회의록 요약 전문가다. '기존 요약(JSON)'과 그 이후 새로 도착한 자막이 주어진다. "
+    "둘을 합쳐 '갱신된 요약'을 아래 JSON 구조로만 출력한다(설명 문장 없이 JSON만):\n"
+    '{\n'
+    '  "keyDiscussions": ["핵심 논의 요점", ...],\n'
+    '  "decisions": [{"item": "안건", "decision": "결정 내용", "decidedBy": "결정한 사람"}],\n'
+    '  "actionItems": [{"assignee": "담당자", "task": "할 일"}],\n'
+    '  "pendingTopics": ["아직 결론 안 난 주제", ...]\n'
+    '}\n'
+    "규칙: 기존 요약의 항목은 새 자막과 모순되지 않는 한 유지·보완한다. "
+    "새 자막에서 결론이 난 보류 주제는 decisions/actionItems로 옮기고 pendingTopics에서 뺀다. "
+    "자막에 근거 없는 내용은 지어내지 않는다."
+)
+
+
+def generate_and_save_summary(db, meeting_id, response_language="ko", prev_snap=None):
     """
-    이 회의의 자막을 읽어 gpt로 요약을 '생성'하고, 스냅샷으로 '저장'한다.
-    반환: (저장된 스냅샷 객체, 반영한 자막 수). 자막이 하나도 없으면 (None, 0).
+    요약을 생성해 스냅샷으로 저장한다.
+
+    - prev_snap=None : 전체 자막으로 처음부터 요약 (최초 생성 / refresh)
+    - prev_snap 있음 : '기존 요약 + 그 이후 새 자막만' gpt에 줘서 갱신 (증분 → 토큰·시간 절약)
+
+    반환: (스냅샷, 이번에 반영한 자막 수).
+    새 자막이 없으면 (prev_snap, 0), 자막 자체가 없으면 (None, 0).
     """
-    rows = repository.get_transcripts(db, meeting_id)
+    after_id = prev_snap.coverage_to_seq if prev_snap else None
+    rows = repository.get_transcripts(db, meeting_id, after_id=after_id)
     if not rows:
-        return None, 0
+        return prev_snap, 0
 
     lang_name = _LANG_NAMES.get(response_language, response_language)
     transcript_text = "\n".join(f"{r.speaker or '화자'}: {r.cleaned_text or r.original_text}" for r in rows)
 
+    if prev_snap is not None:   # 증분: 기존 요약 + 새 자막만
+        system_text = _SUMMARY_UPDATE_SYSTEM
+        user_text = (
+            f"[기존 요약]\n{json.dumps(prev_snap.summary_json, ensure_ascii=False)}\n\n"
+            f"[새 자막]\n{transcript_text}"
+        )
+    else:                       # 최초/전체: 자막 전체
+        system_text = _SUMMARY_SYSTEM
+        user_text = transcript_text
+
     resp = client.chat.completions.create(
         model=_deployment,
         messages=[
-            {"role": "system", "content": _SUMMARY_SYSTEM + f" 모든 값은 '{lang_name}'로 쓴다."},
-            {"role": "user", "content": transcript_text},
+            {"role": "system", "content": system_text + f" 모든 값은 '{lang_name}'로 쓴다."},
+            {"role": "user", "content": user_text},
         ],
         response_format={"type": "json_object"},
     )
@@ -173,15 +205,15 @@ def generate_and_save_summary(db, meeting_id, response_language="ko"):
     except (json.JSONDecodeError, TypeError):
         summary_json = {"overview": content}
 
-    coverage_to_seq = rows[-1].id   # 마지막 자막 id까지 반영했다는 표시
+    coverage_to_seq = max(r.id for r in rows)   # 이번에 반영한 마지막 자막 id(워터마크)
     snap = repository.save_summary_snapshot(db, meeting_id, summary_json, coverage_to_seq)
     return snap, len(rows)
 
 
 # 회의록 생성용 지시문. 자막+요약을 받아 '정식 회의록' 구조 JSON으로 뽑는다.
 _MINUTES_SYSTEM = (
-    "너는 회의록 작성 전문가다. 주어진 회의 자막과 (있으면) 기존 요약을 근거로 "
-    "정식 회의록을 아래 JSON 구조로만 작성한다(설명 없이 JSON만 출력):\n"
+    "너는 회의록 작성 전문가다. 주어진 '지금까지의 요약(JSON)'과 그 이후 새 자막을 근거로 "
+    "(요약이 없으면 자막 전체를 근거로) 정식 회의록을 아래 JSON 구조로만 작성한다(설명 없이 JSON만 출력):\n"
     '{\n'
     '  "title": "회의 제목(내용에서 추론)",\n'
     '  "keyDiscussions": ["핵심 논의 요점", ...],\n'
@@ -196,19 +228,26 @@ _MINUTES_SYSTEM = (
 
 def generate_minutes(db, meeting_id, response_language="ko"):
     """
-    전체 자막 + 저장된 요약을 gpt로 '회의록 문서 형태'로 정리해 dict로 돌려준다.
-    참석자 목록도 채워 넣는다. 자막이 하나도 없으면 None.
+    회의록을 gpt로 생성해 dict로 돌려준다. 참석자 목록도 채워 넣는다.
+
+    - 저장된 요약이 있으면: '요약 + 그 이후 새 자막만' 사용 (전체 자막을 다시 안 읽어 시간·토큰 절약)
+    - 요약이 없으면: 전체 자막 사용 (기존 방식)
+    - 요약도 자막도 없으면 None.
     """
-    rows = repository.get_transcripts(db, meeting_id)
-    if not rows:
+    snap = repository.get_summary_snapshot(db, meeting_id)
+    after_id = snap.coverage_to_seq if snap else None
+    rows = repository.get_transcripts(db, meeting_id, after_id=after_id)  # 요약 이후 새 자막만(요약 없으면 전체)
+    if snap is None and not rows:
         return None
 
     participants = [nm for _id, nm in repository.get_participants(db, meeting_id) if nm]
-    snap = repository.get_summary_snapshot(db, meeting_id)
     summary_text = (
         json.dumps(snap.summary_json, ensure_ascii=False) if snap else "(저장된 요약 없음)"
     )
-    transcript_text = "\n".join(f"{r.speaker or '화자'}: {r.cleaned_text or r.original_text}" for r in rows)
+    transcript_text = (
+        "\n".join(f"{r.speaker or '화자'}: {r.cleaned_text or r.original_text}" for r in rows)
+        if rows else "(요약 이후 새 자막 없음)"
+    )
     lang_name = _LANG_NAMES.get(response_language, response_language)
 
     resp = client.chat.completions.create(
@@ -217,8 +256,8 @@ def generate_minutes(db, meeting_id, response_language="ko"):
             {"role": "system", "content": _MINUTES_SYSTEM + f" 모든 값은 '{lang_name}'로 쓴다."},
             {"role": "user", "content":
                 f"[참석자]\n{', '.join(participants)}\n\n"
-                f"[기존 요약]\n{summary_text}\n\n"
-                f"[전체 자막]\n{transcript_text}"},
+                f"[지금까지의 요약]\n{summary_text}\n\n"
+                f"[요약 이후 새 자막]\n{transcript_text}"},
         ],
         response_format={"type": "json_object"},
     )
